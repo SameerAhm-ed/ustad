@@ -1,0 +1,113 @@
+{
+ "loom-14 se ajeeb awaaz aa rahi hai, dhaaga baar baar toot raha hai": {
+  "extracted": {
+   "machine_id": "loom-14",
+   "symptom": "Strange noise and frequent thread breakage",
+   "urgency": "high",
+   "language": "Roman Urdu"
+  },
+  "evidence": {
+   "sensors": {
+    "spindle_rpm": 12000,
+    "vibration_mm_s": 8.2,
+    "motor_temp_c": 64,
+    "yarn_tension_cn": 25,
+    "load_pct": 72,
+    "hours_since_service": 1150
+   },
+   "history": [
+    {
+     "date": "2026-09-12",
+     "fault": "bearing_wear",
+     "action": "lubricated main shaft bearing"
+    },
+    {
+     "date": "2026-10-03",
+     "fault": "bearing_wear",
+     "action": "lubricated main shaft bearing"
+    },
+    {
+     "date": "2026-10-24",
+     "fault": "bearing_wear",
+     "action": "Stop loom-14 immediately"
+    }
+   ],
+   "manual": {
+    "bearing_wear": "Bearing wear: rising vibration, noise, worse after long service intervals. Lubricate and check alignment. If vibration returns within weeks, lubrication is not enough: replace the bearing (part BRG-6205) and inspect the shaft."
+   },
+   "ml_risk": 1.0,
+   "ml_fault": "bearing_wear",
+   "repeat_count": 2
+  },
+  "diagnosis": {
+   "cause": "bearing_wear",
+   "steps": [
+    "Stop loom-14 immediately",
+    "Inspect main shaft for wear",
+    "Replace worn bearing",
+    "Check shaft alignment",
+    "Verify vibration levels"
+   ],
+   "parts": [
+    "BRG-6205"
+   ],
+   "priority": "stop machine now",
+   "repeat_pattern": true,
+   "reply": "Lubrication kaam nahi kar raha kyunke yeh masla 2 baar aa chuka hai. Bearing (BRG-6205) replace karein aur shaft check karein."
+  },
+  "error": null,
+  "needs_machine": false
+ },
+ "Spinning frame 01 keeps breaking yarn, ends down every few minutes": {
+  "extracted": {
+   "machine_id": "spinning-01",
+   "symptom": "Frequent yarn breakage and ends down",
+   "urgency": "high",
+   "language": "English"
+  },
+  "evidence": {
+   "sensors": {
+    "spindle_rpm": 16500,
+    "vibration_mm_s": 3.0,
+    "motor_temp_c": 64,
+    "yarn_tension_cn": 9,
+    "load_pct": 72,
+    "hours_since_service": 300
+   },
+   "history": [
+    {
+     "date": "2026-07-15",
+     "fault": "overload",
+     "action": "replaced drive belt"
+    },
+    {
+     "date": "2026-10-24",
+     "fault": "tension_fault",
+     "action": "Recalibrate tensioner"
+    }
+   ],
+   "manual": {
+    "tension_fault": "Yarn tension out of range: worn tensioner or wrong setting causes breaks or slack. Recalibrate tensioner, inspect guides and yarn path, replace worn tensioner discs (part TNS-12)."
+   },
+   "ml_risk": 0.995,
+   "ml_fault": "tension_fault",
+   "repeat_count": 0
+  },
+  "diagnosis": {
+   "cause": "tension_fault (worn tensioner or wrong setting)",
+   "steps": [
+    "Recalibrate tensioner",
+    "Inspect guides and yarn path",
+    "Replace worn tensioner discs"
+   ],
+   "parts": [
+    "TNS-12"
+   ],
+   "priority": "high",
+   "repeat_pattern": false,
+   "reply": "The ML model indicates a tension fault. Please recalibrate the tensioner, inspect the yarn path, and replace the discs if worn."
+  },
+  "error": null,
+  "needs_machine": false
+ }
+}

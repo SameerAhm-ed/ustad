@@ -83,6 +83,16 @@ def test_healthy_machine_not_blamed_or_logged():
     assert "loom-02" not in HISTORY
 
 
+def test_steps_reported_in_order():
+    import harness
+    harness.llm.ask = _fake_ask(
+        '{"machine_id": "loom-14", "symptom": "noise", "urgency": "high", "language": "English"}',
+        '{"cause": "c", "steps": ["a"], "parts": [], "priority": "high", "repeat_pattern": true, "reply": "r"}')
+    seen = []
+    harness.run(LOOM14_NOTE, on_step=lambda name, data: seen.append(name))
+    assert seen == ["understood", "evidence", "diagnosing", "diagnosis"], seen
+
+
 def live():
     import importlib
     import harness, llm

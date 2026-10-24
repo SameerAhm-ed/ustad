@@ -5,6 +5,7 @@ import streamlit as st
 
 import harness
 from data import MACHINES
+from ml import risk
 
 CACHE = Path(__file__).with_name("demo_cache.json")
 EXAMPLES = {
@@ -13,6 +14,11 @@ EXAMPLES = {
     "Urdu: loom 03": "لوم 03 کی موٹر بہت گرم ہو رہی ہے اور جلنے کی بو آ رہی ہے",
     "Vague note": "machine theek nahi chal rahi, check karo",
 }
+PRIORITY_COLOR = {"stop machine now": "red", "high": "orange", "medium": "orange", "low": "green"}
+
+
+def plain(s):
+    return str(s).replace("_", " ").capitalize()
 
 
 def load_cache():
@@ -38,28 +44,55 @@ def work_order(note, r):
     return "\n".join(lines)
 
 
-st.set_page_config(page_title="Ustad", page_icon="🧵")
+def show_step(box, name, data):
+    if name == "understood" and data.get("urgency") == "unknown":  # harness regex fallback, not Gemma
+        box.write(f"⚠️ **Gemma unreachable**: found machine {data.get('machine_id') or '?'} from the note text")
+    elif name == "understood":
+        box.write(f"✅ **Understood the note** ({data.get('language')}): {data.get('machine_id') or 'machine?'} · "
+                  f"{data.get('symptom')} · urgency {data.get('urgency')}")
+    elif name == "evidence":
+        box.write(f"✅ **Checked the machine**: ML risk {data['ml_risk']:.0%} ({plain(data['ml_fault'])}) · "
+                  f"{len(data['history'])} past jobs · {len(data['manual'])} manual section(s)")
+    elif name == "diagnosing":
+        box.write("🧠 **Gemma 4 is diagnosing** from the evidence…")
+    elif name == "diagnosis":
+        box.write("✅ **Diagnosis ready**, case logged to machine history")
+
+
+st.set_page_config(page_title="Ustad", page_icon="🧵", layout="wide")
 st.title("🧵 Ustad")
 st.markdown("**The senior technician on every shift.**")
 st.caption("Write what you see on the floor, in Roman Urdu, Urdu or English. Ustad reads it with Gemma 4, checks the "
            "machine's sensors, history and manual, then tells you the fix and warns when a fault keeps coming back. "
            "Demo data is simulated.")
 
+# Machine floor: live health of every machine at a glance
+st.subheader("Mill floor")
+cols = st.columns(4)
+for i, (mid, m) in enumerate(MACHINES.items()):
+    r_, fault = risk(m["sensors"])
+    icon, status = ("🔴", plain(fault)) if r_ >= 0.5 else ("🟡", "watch") if r_ >= 0.2 else ("🟢", "healthy")
+    with cols[i % 4].container(border=True):
+        st.markdown(f"{icon} **{m['name']}**  \n`{mid}` · {status} · risk {r_:.0%}")
+
+st.subheader("Technician note")
 st.session_state.setdefault("note", EXAMPLES["Roman Urdu: loom 14"])
 cols = st.columns(len(EXAMPLES))
 for col, (label, text) in zip(cols, EXAMPLES.items()):
     if col.button(label, use_container_width=True):
         st.session_state.note = text
         st.session_state.pop("result", None)  # don't leave the previous note's diagnosis on screen
-note = st.text_area("Technician note", key="note", height=90)
+note = st.text_area("Technician note", key="note", height=80, label_visibility="collapsed")
 
-if st.button("Diagnose with Gemma", type="primary") and note.strip():
-    with st.spinner("Gemma is reading the note and checking the machine..."):
-        r = harness.run(note.strip())
-    if r["diagnosis"]:
-        save_cache(note.strip(), r)
-    elif r["error"] and note.strip() in load_cache():
-        r = {**load_cache()[note.strip()], "cached": True}  # network died mid-demo: show last good run
+if st.button("Diagnose with Ustad", type="primary") and note.strip():
+    with st.status("Ustad is working on it…", expanded=True) as box:
+        r = harness.run(note.strip(), on_step=lambda name, data: show_step(box, name, data))
+        if r["diagnosis"]:
+            save_cache(note.strip(), r)
+        elif r["error"] and note.strip() in load_cache():
+            r = {**load_cache()[note.strip()], "cached": True}  # network died mid-demo: show last good run
+        box.update(label="Done" if r["diagnosis"] else "Needs attention", expanded=False,
+                   state="complete" if r["diagnosis"] else "error")
     st.session_state.result = (note.strip(), r)
 
 if "result" not in st.session_state:
@@ -69,36 +102,35 @@ note, r = st.session_state.result
 ex, ev, dx = r["extracted"], r["evidence"], r["diagnosis"]
 if r.get("cached"):
     st.info("Gemma is unreachable right now, so this is the saved result from an earlier live run of the same note.")
-
-st.subheader("How Gemma worked it out")
-with st.expander("1. Understood the note", expanded=False):
-    st.json(ex)
 if r["needs_machine"]:
-    st.warning("Which machine is this? The note doesn't name one, and the copilot won't guess. "
+    st.warning("Which machine is this? The note doesn't name one, and Ustad won't guess. "
                f"Add the machine number, e.g. one of: {', '.join(MACHINES)}")
     st.stop()
-with st.expander(f"2. Gathered evidence for {MACHINES[ex['machine_id']]['name']}"):
-    c1, c2, c3 = st.columns(3)
-    c1.metric("ML failure risk", f"{ev['ml_risk']:.0%}")
-    c2.metric("Likely fault", ev["ml_fault"].replace("_", " "))
-    c3.metric("Same fault before", ev["repeat_count"])
-    st.write("**Live sensors**", ev["sensors"])
-    st.write("**Maintenance history**", ev["history"] or "none")
-    st.write("**Manual sections used**", ev["manual"])
-
 if not dx:
     st.error(r["error"] or "No diagnosis.")
     st.stop()
 
-st.subheader("3. Diagnosis")
+name = MACHINES[ex["machine_id"]]["name"]
+st.subheader(f"Diagnosis: {name}")
 if dx.get("repeat_pattern"):
-    st.error(f"🔁 Repeat fault: {ev['ml_fault'].replace('_', ' ')} has happened {ev['repeat_count']} times on this "
-             "machine already. The earlier fix isn't holding.")
-c1, c2 = st.columns(2)
-c1.metric("Priority", str(dx.get("priority", "?")).upper())
-c2.metric("Parts", ", ".join(dx.get("parts", [])) or "none")
-st.markdown(f"**Cause:** {dx.get('cause')}")
-st.markdown("\n".join(f"{i}. {s}" for i, s in enumerate(dx.get("steps", []), 1)))
-st.chat_message("assistant").write(dx.get("reply", ""))
-st.subheader("4. Logged")
-st.download_button("Download work order", work_order(note, r), file_name="work_order.txt")
+    st.error(f"🔁 **Repeat fault.** {plain(ev['ml_fault'])} has happened {ev['repeat_count']} times on this machine "
+             "already. The earlier fix isn't holding.")
+
+left, right = st.columns([3, 2])
+with left:
+    color = PRIORITY_COLOR.get(str(dx.get("priority", "")).lower(), "gray")
+    st.markdown(f"### :{color}-background[{str(dx.get('priority', '?')).upper()}]")
+    st.markdown(f"**Cause:** {plain(dx.get('cause'))}")
+    st.markdown("\n".join(f"{i}. {s}" for i, s in enumerate(dx.get("steps", []), 1)))
+    st.markdown(f"**Parts:** {', '.join(f'`{p}`' for p in dx.get('parts', [])) or 'none'}")
+    st.chat_message("assistant", avatar="🧵").write(dx.get("reply", ""))
+    st.download_button("Download work order", work_order(note, r), file_name="work_order.txt")
+with right:
+    st.markdown("**Machine history**")
+    for h in ev["history"]:
+        mark = "🔁" if h["fault"] == ev["ml_fault"] else "•"
+        st.markdown(f"{mark} `{h['date']}` {plain(h['fault'])}: {h['action']}")
+    with st.expander("Evidence Gemma used"):
+        st.write("**Live sensors**", ev["sensors"])
+        st.write("**Manual sections**", ev["manual"])
+        st.write("**Understood note**", ex)

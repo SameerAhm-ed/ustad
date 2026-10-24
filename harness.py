@@ -67,7 +67,8 @@ def log_case(machine_id, fault, action):
     HISTORY.setdefault(machine_id, []).append({"date": date.today().isoformat(), "fault": fault, "action": action})
 
 
-def run(note):
+def run(note, on_step=lambda name, data: None):
+    """on_step(name, data) fires as each step finishes, so the UI can show progress live."""
     out = {"extracted": None, "evidence": None, "diagnosis": None, "error": None, "needs_machine": False}
     try:
         ex = _ask_json(EXTRACT.format(ids=", ".join(MACHINES), note=note))
@@ -76,14 +77,17 @@ def run(note):
     if ex.get("machine_id") not in MACHINES:
         ex["machine_id"] = find_machine(note)
     out["extracted"] = ex
+    on_step("understood", ex)
     if not ex["machine_id"]:
         out["needs_machine"] = True  # never guess the machine
         return out
 
     mid = ex["machine_id"]
     ev = out["evidence"] = gather(mid, str(ex.get("symptom") or note))
+    on_step("evidence", ev)
     if out["error"]:
         return out
+    on_step("diagnosing", None)
     try:
         dx = _ask_json(DIAGNOSE.format(
             note=note, machine_id=mid, name=MACHINES[mid]["name"], sensors=ev["sensors"], risk=ev["ml_risk"],
@@ -94,6 +98,7 @@ def run(note):
         return out
     dx["steps"], dx["parts"] = _as_list(dx.get("steps")), _as_list(dx.get("parts"))
     out["diagnosis"] = dx
+    on_step("diagnosis", dx)
     if ev["ml_risk"] >= 0.5:  # only log real faults, so healthy machines never build a fake repeat history
         log_case(mid, ev["ml_fault"], (dx["steps"] or ["see diagnosis"])[0])
     return out

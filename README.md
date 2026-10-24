@@ -63,6 +63,7 @@ Model: `gemma-4-31b-it`, called through OpenRouter (`google/gemma-4-31b-it:free`
 - Retries on API errors, then falls back to the second provider.
 - If Gemma is unreachable during a demo, the app shows the last good live result for the same note, clearly labelled as cached (`demo_cache.json`).
 - If Gemma returns malformed JSON, it is asked once to return only JSON.
+- Clear error messages when Gemma can't answer: no internet, timeout, free-tier limit reached, no credits / billing limit, invalid key, model not available on the account, or Gemma servers busy.
 
 ---
 
@@ -74,6 +75,15 @@ No public textile-machine fault dataset exists, so the demo mill is simulated in
 - the failure-risk model trains in about a second on 6,000 generated rows
 
 **Next step:** connect real sensor feeds, the mill's maintenance (CMMS) history and OEM manuals. The harness does not change; only the tools do.
+
+## Future scope
+- **Self-improving from the floor.** After each job the technician confirms what actually fixed it: one tap ("fixed / not fixed") plus what they did, in their own language. Ustad stores that outcome in the machine's history and, on the next diagnosis, gives Gemma 4 the fixes that worked or failed before on this machine and similar machines. New fault types reported by technicians become new manual/knowledge entries once a supervisor approves them. The more the mill uses Ustad, the better its advice gets, and the best technician's knowledge stays when they are off shift. This is retrieval of past outcomes, not retraining Gemma; the failure-risk model can be periodically retrained on the confirmed outcomes.
+- **Photos and video of the fault.** Gemma 4 takes text, image and video input: the technician snaps the worn part, broken yarn or fabric defect, and Gemma reads it alongside the note.
+- **Voice notes** in Urdu, Punjabi or Sindhi for technicians who don't type.
+- **Native function calling.** Gemma 4 supports tool calling, so the fixed 4-step loop can become an agent that decides which tools to call (spare-parts stock, shift roster, open work orders).
+- **Real data.** Live sensor feeds (PLC/SCADA), the mill's CMMS maintenance history, OEM manuals for Rieter, Picanol, Toyota, etc.
+- **Runs offline on the mill's own PC** with Gemma 4 open weights (e.g. via Ollama), so machine data never leaves the factory.
+- **Shift handover and fleet patterns.** A daily summary of open faults, and spotting the same fault across many machines (a bad batch of parts, a wrong setting).
 
 ## Run it
 ```

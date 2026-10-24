@@ -1,8 +1,11 @@
 """Self-check. `python check.py` runs offline tests; `python check.py live` also calls Gemma."""
 import sys
 
+import llm
 from data import MACHINES
 from ml import risk
+
+REAL_ASK = llm.ask  # tests below swap llm.ask for fakes
 
 
 def test_ml():
@@ -91,6 +94,67 @@ def test_steps_reported_in_order():
     seen = []
     harness.run(LOOM14_NOTE, on_step=lambda name, data: seen.append(name))
     assert seen == ["understood", "evidence", "diagnosing", "diagnosis"], seen
+
+
+def _http_error(status, text=""):
+    import requests
+    resp = requests.models.Response()
+    resp.status_code, resp._content = status, text.encode()
+    return requests.HTTPError(f"{status} error", response=resp)
+
+
+def test_explain_kinds():
+    import requests
+    from llm import explain
+    assert explain(requests.ConnectionError("Max retries exceeded")).kind == "no_internet"
+    assert explain(requests.ReadTimeout("read timed out")).kind == "timeout"
+    assert explain(_http_error(402, '{"error": "Insufficient credits"}')).kind == "credits"
+    assert explain(_http_error(429, "Rate limit exceeded: add 10 credits")).kind == "quota"  # code beats text
+    assert explain(_http_error(401, "No auth credentials found")).kind == "auth"
+    assert explain(_http_error(404, '{"error":{"message":"No allowed providers are available"}}')).kind == "provider"
+    assert explain(_http_error(503, "Service Unavailable")).kind == "busy"
+    e = explain(ValueError("weird thing"))
+    assert e.kind == "unknown" and str(e) == e.message == "Gemma failed: weird thing"
+
+
+def test_ask_no_keys_and_no_retry_on_auth():
+    import os
+    import llm
+    saved = {k: os.environ.pop(k, None) for k in ("OPENROUTER_API_KEY", "GEMINI_API_KEY")}
+    real = llm._openrouter
+    try:
+        try:
+            REAL_ASK("x")
+            raise AssertionError("expected GemmaError")
+        except llm.GemmaError as e:
+            assert e.kind == "auth"
+        os.environ["OPENROUTER_API_KEY"] = "test"
+        calls = []
+        def bad_key(prompt):
+            calls.append(1)
+            raise _http_error(401, "invalid key")
+        llm._openrouter = bad_key
+        try:
+            REAL_ASK("x")
+            raise AssertionError("expected GemmaError")
+        except llm.GemmaError as e:
+            assert e.kind == "auth" and len(calls) == 1, (e.kind, calls)
+    finally:
+        llm._openrouter = real
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_harness_reports_friendly_reason():
+    import harness
+    from llm import GemmaError
+    msg = "Gemma free-tier limit reached (too many requests or daily quota used). Wait a minute or use the other API key."
+    harness.llm.ask = _fake_ask(GemmaError("quota", msg))
+    r = harness.run(LOOM14_NOTE)
+    assert r["error_kind"] == "quota" and r["error"] == msg, r["error"]
+    assert r["extracted"]["urgency"] == "unknown" and r["evidence"]["ml_fault"] == "bearing_wear"
 
 
 def live():

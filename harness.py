@@ -67,13 +67,23 @@ def log_case(machine_id, fault, action):
     HISTORY.setdefault(machine_id, []).append({"date": date.today().isoformat(), "fault": fault, "action": action})
 
 
+def _fail(out, e):
+    """Record why Gemma failed: the plain-words reason for GemmaError, raw text otherwise."""
+    gemma = isinstance(e, llm.GemmaError)
+    out["error"] = str(e) if gemma else f"Gemma unavailable: {e}"
+    out["error_kind"] = e.kind if gemma else "unknown"
+
+
 def run(note, on_step=lambda name, data: None):
     """on_step(name, data) fires as each step finishes, so the UI can show progress live."""
-    out = {"extracted": None, "evidence": None, "diagnosis": None, "error": None, "needs_machine": False}
+    out = {"extracted": None, "evidence": None, "diagnosis": None, "error": None, "error_kind": None,
+           "needs_machine": False}
     try:
         ex = _ask_json(EXTRACT.format(ids=", ".join(MACHINES), note=note))
     except Exception as e:  # Gemma down: fall back to regex so evidence still shows
-        ex, out["error"] = {"machine_id": None, "symptom": note, "urgency": "unknown", "language": "English"}, f"Gemma unavailable: {e}"
+        _fail(out, e)
+        ex = {"machine_id": None, "symptom": note, "urgency": "unknown", "language": "English",
+              "gemma_error": out["error"]}
     if ex.get("machine_id") not in MACHINES:
         ex["machine_id"] = find_machine(note)
     out["extracted"] = ex
@@ -94,7 +104,7 @@ def run(note, on_step=lambda name, data: None):
             fault=ev["ml_fault"], history=ev["history"] or "none", repeat=ev["repeat_count"],
             manual=" ".join(ev["manual"].values()) or "no matching section", language=ex.get("language", "English")))
     except Exception as e:
-        out["error"] = f"Gemma unavailable: {e}"
+        _fail(out, e)
         return out
     dx["steps"], dx["parts"] = _as_list(dx.get("steps")), _as_list(dx.get("parts"))
     out["diagnosis"] = dx

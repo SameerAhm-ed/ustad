@@ -44,9 +44,14 @@ def work_order(note, r):
     return "\n".join(lines)
 
 
+ERROR_ICONS = {"no_internet": "📡", "timeout": "⏱️", "credits": "💳", "quota": "🚦", "auth": "🔑",
+               "provider": "🚫", "busy": "🔥"}
+
+
 def show_step(box, name, data):
     if name == "understood" and data.get("urgency") == "unknown":  # harness regex fallback, not Gemma
-        box.write(f"⚠️ **Gemma unreachable**: found machine {data.get('machine_id') or '?'} from the note text")
+        box.write(f"⚠️ **Gemma unreachable**: {data.get('gemma_error') or 'no answer'} "
+                  f"Found machine {data.get('machine_id') or '?'} from the note text instead.")
     elif name == "understood":
         box.write(f"✅ **Understood the note** ({data.get('language')}): {data.get('machine_id') or 'machine?'} · "
                   f"{data.get('symptom')} · urgency {data.get('urgency')}")
@@ -90,7 +95,8 @@ def diagnose_tab():
             if r["diagnosis"]:
                 save_cache(note.strip(), r)
             elif r["error"] and note.strip() in load_cache():
-                r = {**load_cache()[note.strip()], "cached": True}  # network died mid-demo: show last good run
+                r = {**load_cache()[note.strip()], "cached": True,  # network died mid-demo: show last good run
+                     "live_error": r["error"], "live_error_kind": r.get("error_kind")}
             box.update(label="Done" if r["diagnosis"] else "Needs attention", expanded=False,
                        state="complete" if r["diagnosis"] else "error")
         st.session_state.result = (note.strip(), r)
@@ -101,13 +107,14 @@ def diagnose_tab():
     note, r = st.session_state.result
     ex, ev, dx = r["extracted"], r["evidence"], r["diagnosis"]
     if r.get("cached"):
-        st.info("Gemma is unreachable right now, so this is the saved result from an earlier live run of the same note.")
+        reason = (r.get("live_error") or "no answer").rstrip(".")
+        st.info(f"Gemma couldn't answer live ({reason}). Showing the saved result from an earlier live run of the same note.")
     if r["needs_machine"]:
         st.warning("Which machine is this? The note doesn't name one, and Ustad won't guess. "
                    f"Add the machine number, e.g. one of: {', '.join(MACHINES)}")
         return
     if not dx:
-        st.error(r["error"] or "No diagnosis.")
+        st.error(r["error"] or "No diagnosis.", icon=ERROR_ICONS.get(r.get("error_kind"), "⚠️"))
         return
 
     name = MACHINES[ex["machine_id"]]["name"]

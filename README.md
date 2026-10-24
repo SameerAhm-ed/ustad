@@ -14,7 +14,7 @@ Every mill has one *ustad* who knows why loom 14 keeps breaking. When they are o
 - Nobody checks the machine's history, so the same quick fix (lubricate the bearing) is repeated until the machine breaks down and production stops.
 
 ## What Ustad does
-1. Reads a messy note in the technician's own language.
+1. Reads a messy note in the technician's own language, plus an optional **photo** of the worn part, broken yarn or fabric defect (Gemma 4 is multimodal).
 2. Pulls the evidence for that machine: live sensors, maintenance history, manual section, failure-risk model.
 3. Diagnoses: cause, repair steps, part numbers, priority.
 4. **Flags repeat faults**: "bearing wear has happened 2 times already, the earlier fix isn't holding, replace the part."
@@ -52,7 +52,7 @@ flowchart LR
 |---|---|---|
 | 1. Understand | **Gemma 4** | Extracts `machine_id`, `symptom`, `urgency`, `language` as JSON from the note. If no machine is named, Ustad asks instead of guessing. |
 | 2. Gather evidence | **Our code** | `get sensors`, `get history`, `search manual`, and a scikit-learn failure-risk model (`ml.py`). Counts how often this fault has already happened. |
-| 3. Diagnose | **Gemma 4** | Reasons over the note + evidence. Returns `cause`, `steps`, `parts`, `priority`, `repeat_pattern`, and a `reply` in the technician's language. Told to use only the evidence (no invented part numbers). |
+| 3. Diagnose | **Gemma 4** | Reasons over the note + evidence, and over the technician's **photo** if one is attached (`photo_finding`: what it sees in the image). Returns `cause`, `steps`, `parts`, `priority`, `repeat_pattern`, and a `reply` in the technician's language. Told to use only the evidence (no invented part numbers). |
 | 4. Remember | **Our code** | Appends the case to the machine's history, so the next repeat is detected. |
 
 **Gemma 4 does the language understanding and the diagnosis.** The code around it decides what evidence Gemma sees, validates its JSON (with one repair retry), and keeps the history.
@@ -78,7 +78,7 @@ No public textile-machine fault dataset exists, so the demo mill is simulated in
 
 ## Future scope
 - **Self-improving from the floor.** After each job the technician confirms what actually fixed it: one tap ("fixed / not fixed") plus what they did, in their own language. Ustad stores that outcome in the machine's history and, on the next diagnosis, gives Gemma 4 the fixes that worked or failed before on this machine and similar machines. New fault types reported by technicians become new manual/knowledge entries once a supervisor approves them. The more the mill uses Ustad, the better its advice gets, and the best technician's knowledge stays when they are off shift. This is retrieval of past outcomes, not retraining Gemma; the failure-risk model can be periodically retrained on the confirmed outcomes.
-- **Photos and video of the fault.** Gemma 4 takes text, image and video input: the technician snaps the worn part, broken yarn or fabric defect, and Gemma reads it alongside the note.
+- **Video of the fault.** Photos already work; next is short video clips (a loom's motion, a vibrating spindle), which Gemma 4 can also take as input.
 - **Voice notes** in Urdu, Punjabi or Sindhi for technicians who don't type.
 - **Native function calling.** Gemma 4 supports tool calling, so the fixed 4-step loop can become an agent that decides which tools to call (spare-parts stock, shift roster, open work orders).
 - **Real data.** Live sensor feeds (PLC/SCADA), the mill's CMMS maintenance history, OEM manuals for Rieter, Picanol, Toyota, etc.

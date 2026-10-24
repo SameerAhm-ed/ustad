@@ -1,3 +1,4 @@
+import base64
 import os
 import socket
 import time
@@ -83,11 +84,20 @@ def explain(exc):
     return GemmaError(kind, msg)
 
 
-def _openrouter(prompt):
+def _messages(prompt, image=None):
+    """OpenAI-style chat messages; image is (bytes, mime) and goes in as a data URL."""
+    if not image:
+        return [{"role": "user", "content": prompt}]
+    url = f"data:{image[1]};base64,{base64.b64encode(image[0]).decode()}"
+    return [{"role": "user", "content": [{"type": "text", "text": prompt},
+                                         {"type": "image_url", "image_url": {"url": url}}]}]
+
+
+def _openrouter(prompt, image=None):
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
-        json={"model": OPENROUTER_MODEL, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": OPENROUTER_MODEL, "messages": _messages(prompt, image)},
         timeout=40,
     )
     r.raise_for_status()
@@ -98,13 +108,15 @@ def _openrouter(prompt):
     return data["choices"][0]["message"]["content"] or ""
 
 
-def _google(prompt):
+def _google(prompt, image=None):
     from google import genai
+    from google.genai import types
+    contents = [prompt, types.Part.from_bytes(data=image[0], mime_type=image[1])] if image else prompt
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    return client.models.generate_content(model=GOOGLE_MODEL, contents=prompt).text
+    return client.models.generate_content(model=GOOGLE_MODEL, contents=contents).text
 
 
-def ask(prompt):
+def ask(prompt, image=None):
     """Gemma 4 31B: OpenRouter free first, Google AI Studio as fallback. Retries on load errors.
     Raises GemmaError with a plain-words reason."""
     backends = [(name, f) for name, f, k in (("OpenRouter", _openrouter, "OPENROUTER_API_KEY"),
@@ -119,7 +131,7 @@ def ask(prompt):
         time.sleep(wait)
         for name, backend in live:
             try:
-                return backend(prompt)
+                return backend(prompt, image)
             except Exception as e:
                 errs[name] = explain(e)
     found = [errs[n] for n, _ in backends]

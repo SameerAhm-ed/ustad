@@ -84,22 +84,27 @@ def pick_example(text):  # callback runs before the text_area is drawn, so it ma
 def diagnose_tab():
     st.session_state.setdefault("note", EXAMPLES["Roman Urdu: loom 14"])
     note = st.text_area("Technician note", key="note", height=80)
+    photo = st.file_uploader("📷 Photo of the part, yarn or fabric (optional): Gemma 4 looks at it too",
+                             type=["jpg", "jpeg", "png", "webp"])
     go = st.button("Diagnose with Ustad", type="primary")
     cols = st.columns(len(EXAMPLES))
     for col, (label, text) in zip(cols, EXAMPLES.items()):
         col.button(label, use_container_width=True, on_click=pick_example, args=(text,))
 
     if go and note.strip():
+        image = (photo.getvalue(), photo.type) if photo else None
+        key = note.strip() + (f" [photo: {photo.name}]" if photo else "")  # photo runs cache separately
         with st.status("Ustad is working on it…", expanded=True) as box:
-            r = harness.run(note.strip(), on_step=lambda name, data: show_step(box, name, data))
+            r = harness.run(note.strip(), on_step=lambda name, data: show_step(box, name, data), image=image)
             if r["diagnosis"]:
-                save_cache(note.strip(), r)
-            elif r["error"] and note.strip() in load_cache():
-                r = {**load_cache()[note.strip()], "cached": True,  # network died mid-demo: show last good run
+                save_cache(key, r)
+            elif r["error"] and key in load_cache():
+                r = {**load_cache()[key], "cached": True,  # network died mid-demo: show last good run
                      "live_error": r["error"], "live_error_kind": r.get("error_kind")}
             box.update(label="Done" if r["diagnosis"] else "Needs attention", expanded=False,
                        state="complete" if r["diagnosis"] else "error")
         st.session_state.result = (note.strip(), r)
+        st.session_state.photo = image[0] if image else None
 
     if "result" not in st.session_state:
         return
@@ -133,6 +138,10 @@ def diagnose_tab():
         st.chat_message("assistant", avatar="🧵").write(dx.get("reply", ""))
         st.download_button("Download work order", work_order(note, r), file_name="work_order.txt")
     with right:
+        if st.session_state.get("photo"):
+            st.image(st.session_state.photo, caption="Technician's photo", use_container_width=True)
+            if dx.get("photo_finding"):
+                st.markdown(f"**📷 Gemma saw:** {dx['photo_finding']}")
         st.markdown("**Machine history**")
         for h in ev["history"]:
             mark = "🔁" if h["fault"] == ev["ml_fault"] else "•"

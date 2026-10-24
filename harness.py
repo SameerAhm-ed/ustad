@@ -24,7 +24,12 @@ Manual: {manual}
 If it repeated 2+ times, say the earlier fix is not working and recommend the permanent fix from the manual.
 Return JSON only: {{"cause": str, "steps": [3-5 short steps], "parts": [part numbers from the manual, or []],
 "priority": "low"|"medium"|"high"|"stop machine now", "repeat_pattern": true|false,
-"reply": a short message to the technician in {language}}}"""
+"reply": a short message to the technician in {language}{photo_key}}}"""
+
+PHOTO = """
+The technician also attached a PHOTO of the machine or part. Look at it carefully: describe the visible damage
+(wear, cracks, discolouration, broken yarn, fabric defect) and use it as evidence alongside the sensors.
+If the photo contradicts the sensors, say so."""
 
 
 def parse_json(text):
@@ -35,11 +40,12 @@ def parse_json(text):
     return json.loads(text[start:end + 1])
 
 
-def _ask_json(prompt):
+def _ask_json(prompt, image=None):
+    kw = {"image": image} if image else {}
     try:
-        return parse_json(llm.ask(prompt))
+        return parse_json(llm.ask(prompt, **kw))
     except ValueError:  # one repair try, then let it raise
-        return parse_json(llm.ask(prompt + "\nReturn ONLY the JSON object, nothing else."))
+        return parse_json(llm.ask(prompt + "\nReturn ONLY the JSON object, nothing else.", **kw))
 
 
 def find_machine(text):
@@ -74,8 +80,9 @@ def _fail(out, e):
     out["error_kind"] = e.kind if gemma else "unknown"
 
 
-def run(note, on_step=lambda name, data: None):
-    """on_step(name, data) fires as each step finishes, so the UI can show progress live."""
+def run(note, on_step=lambda name, data: None, image=None):
+    """on_step(name, data) fires as each step finishes, so the UI can show progress live.
+    image: optional (bytes, mime) photo from the technician; Gemma 4 sees it in the diagnosis step."""
     out = {"extracted": None, "evidence": None, "diagnosis": None, "error": None, "error_kind": None,
            "needs_machine": False}
     try:
@@ -102,7 +109,9 @@ def run(note, on_step=lambda name, data: None):
         dx = _ask_json(DIAGNOSE.format(
             note=note, machine_id=mid, name=MACHINES[mid]["name"], sensors=ev["sensors"], risk=ev["ml_risk"],
             fault=ev["ml_fault"], history=ev["history"] or "none", repeat=ev["repeat_count"],
-            manual=" ".join(ev["manual"].values()) or "no matching section", language=ex.get("language", "English")))
+            manual=" ".join(ev["manual"].values()) or "no matching section", language=ex.get("language", "English"),
+            photo_key=', "photo_finding": what the photo shows' if image else "")
+            + (PHOTO if image else ""), image)
     except Exception as e:
         _fail(out, e)
         return out

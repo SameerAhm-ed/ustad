@@ -19,12 +19,37 @@ LOOM14_NOTE = "loom-14 se ajeeb awaaz aa rahi hai, dhaaga toot raha hai"
 
 def _fake_ask(*replies):
     it = iter(replies)
-    def ask(prompt):
+    def ask(prompt, image=None):
+        ask.calls.append((prompt, image))
         r = next(it)
         if isinstance(r, Exception):
             raise r
         return r
+    ask.calls = []
     return ask
+
+
+def test_photo_goes_to_diagnosis_only():
+    import harness
+    img = (b"fake-jpeg", "image/jpeg")
+    harness.llm.ask = fake = _fake_ask(
+        '{"machine_id": "loom-14", "symptom": "noise", "urgency": "high", "language": "English"}',
+        '{"cause": "c", "steps": ["a"], "parts": [], "priority": "high", "repeat_pattern": true, "reply": "r",'
+        ' "photo_finding": "pitted bearing race"}')
+    saved = list(harness.HISTORY["loom-14"])
+    r = harness.run(LOOM14_NOTE, image=img)
+    harness.HISTORY["loom-14"][:] = saved  # later tests expect exactly 2 past bearing faults
+    assert fake.calls[0][1] is None and fake.calls[1][1] == img
+    assert "photo" in fake.calls[1][0].lower()
+    assert r["diagnosis"]["photo_finding"] == "pitted bearing race"
+
+
+def test_openrouter_message_with_image():
+    import llm
+    assert llm._messages("hi") == [{"role": "user", "content": "hi"}]
+    content = llm._messages("hi", (b"abc", "image/png"))[0]["content"]
+    assert content[0] == {"type": "text", "text": "hi"}
+    assert content[1]["image_url"]["url"] == "data:image/png;base64,YWJj"
 
 
 def test_parse_json():
@@ -130,7 +155,7 @@ def test_ask_no_keys_and_no_retry_on_auth():
             assert e.kind == "auth"
         os.environ["OPENROUTER_API_KEY"] = "test"
         calls = []
-        def bad_key(prompt):
+        def bad_key(prompt, image=None):
             calls.append(1)
             raise _http_error(401, "invalid key")
         llm._openrouter = bad_key

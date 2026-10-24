@@ -44,6 +44,14 @@ def test_photo_goes_to_diagnosis_only():
     assert r["diagnosis"]["photo_finding"] == "pitted bearing race"
 
 
+def test_ollama_payload():
+    import llm
+    p = llm._ollama_payload("hi", (b"abc", "image/png"), "gemma4:e2b")
+    assert p["model"] == "gemma4:e2b" and p["stream"] is False and p["think"] is False
+    assert p["messages"] == [{"role": "user", "content": "hi", "images": ["YWJj"]}]
+    assert "images" not in llm._ollama_payload("hi", None, "m")["messages"][0]
+
+
 def test_openrouter_message_with_image():
     import llm
     assert llm._messages("hi") == [{"role": "user", "content": "hi"}]

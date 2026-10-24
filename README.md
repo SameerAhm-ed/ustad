@@ -57,7 +57,12 @@ flowchart LR
 
 **Gemma 4 does the language understanding and the diagnosis.** The code around it decides what evidence Gemma sees, validates its JSON (with one repair retry), and keeps the history.
 
-Model: `gemma-4-31b-it`, called through OpenRouter (`google/gemma-4-31b-it:free`), with Google AI Studio's Gemini API as fallback (`llm.py`). Gemma is open-weight, so a mill could run Ustad on its own computer and keep machine data in the factory.
+Model, in order of preference (`llm.py`):
+1. **Local Gemma 4 in Ollama** (`gemma4:e2b`, set `OLLAMA_MODEL`): runs on the laptop with no internet, no rate limits and no cost; machine data never leaves the PC. A full diagnosis takes about 14 s on a laptop, a photo about 20 s.
+2. **Gemma 4 31B on OpenRouter** (`google/gemma-4-31b-it:free`).
+3. **Gemma 4 31B on Google AI Studio** (Gemini API).
+
+If one fails, Ustad falls through to the next and tells the user why.
 
 ### Reliability
 - Retries on API errors, then falls back to the second provider.
@@ -82,12 +87,13 @@ No public textile-machine fault dataset exists, so the demo mill is simulated in
 - **Voice notes** in Urdu, Punjabi or Sindhi for technicians who don't type.
 - **Native function calling.** Gemma 4 supports tool calling, so the fixed 4-step loop can become an agent that decides which tools to call (spare-parts stock, shift roster, open work orders).
 - **Real data.** Live sensor feeds (PLC/SCADA), the mill's CMMS maintenance history, OEM manuals for Rieter, Picanol, Toyota, etc.
-- **Runs offline on the mill's own PC** with Gemma 4 open weights (e.g. via Ollama), so machine data never leaves the factory.
+- **Bigger local model on the mill's server:** offline mode already works with Gemma 4 e2b in Ollama on a laptop; a mill server could run the larger Gemma 4 models locally for sharper diagnoses.
 - **Shift handover and fleet patterns.** A daily summary of open faults, and spotting the same fault across many machines (a bad batch of parts, a wrong setting).
 
 ## Run it
 ```
 python -m pip install -r requirements.txt
+ollama pull gemma4:e2b; $env:OLLAMA_MODEL="gemma4:e2b"   # offline (optional)
 $env:OPENROUTER_API_KEY="..."   # and/or $env:GEMINI_API_KEY="..."
 python -m streamlit run app.py
 ```

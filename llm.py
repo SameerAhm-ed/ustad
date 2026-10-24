@@ -108,6 +108,22 @@ def _openrouter(prompt, image=None):
     return data["choices"][0]["message"]["content"] or ""
 
 
+def _ollama_payload(prompt, image, model):
+    msg = {"role": "user", "content": prompt}
+    if image:
+        msg["images"] = [base64.b64encode(image[0]).decode()]
+    return {"model": model, "messages": [msg], "stream": False, "think": False}  # think off: JSON only, faster
+
+
+def _ollama(prompt, image=None):
+    """Gemma 4 running locally in Ollama: no internet, no rate limits, data stays on this PC."""
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    r = requests.post(f"{host}/api/chat", json=_ollama_payload(prompt, image, os.environ["OLLAMA_MODEL"]),
+                      timeout=180)  # ponytail: CPU inference is slow; 180s ceiling
+    r.raise_for_status()
+    return r.json()["message"]["content"] or ""
+
+
 def _google(prompt, image=None):
     from google import genai
     from google.genai import types
@@ -119,7 +135,8 @@ def _google(prompt, image=None):
 def ask(prompt, image=None):
     """Gemma 4 31B: OpenRouter free first, Google AI Studio as fallback. Retries on load errors.
     Raises GemmaError with a plain-words reason."""
-    backends = [(name, f) for name, f, k in (("OpenRouter", _openrouter, "OPENROUTER_API_KEY"),
+    backends = [(name, f) for name, f, k in (("Local Gemma", _ollama, "OLLAMA_MODEL"),
+                                              ("OpenRouter", _openrouter, "OPENROUTER_API_KEY"),
                                               ("Google", _google, "GEMINI_API_KEY")) if os.environ.get(k)]
     if not backends:
         raise GemmaError("auth", "No Gemma API key set. Set OPENROUTER_API_KEY or GEMINI_API_KEY.")
